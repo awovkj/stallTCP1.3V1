@@ -131,6 +131,48 @@ const DEFAULT_SUB_DOMAIN = "sub.cmliussss.net";  // 真实订阅源（用于聚�
 **到这里worker部署就结束了**
 
 
+
+----------------------------------------------------------------------
+
+# cloudflare snip部署 【有snippets的必看】
+
+点击自己的域名进入
+
+<img width="1565" height="202" alt="image" src="https://github.com/user-attachments/assets/2483c2b7-3bb2-4cac-bdd6-38f8b31f4329" />
+
+找到规则-snippets 点击创建片段
+
+<img width="1652" height="716" alt="image" src="https://github.com/user-attachments/assets/9059a47d-77da-4ba4-82cc-03e8a8638c0f" />
+
+输入片段名称【自己决定】
+
+<img width="1920" height="878" alt="image" src="https://github.com/user-attachments/assets/f163e9ef-989b-4645-8ebc-eadf755f4b23" />
+
+找到我项目的worker.js代码 打开它 复制代码 粘贴到snippets
+
+选择片段规则-自定义规则
+
+字段为主机名 运算符为等于 值为你的子域名+你的域名
+
+例如：123.321.com 
+
+<img width="1920" height="914" alt="image" src="https://github.com/user-attachments/assets/1f858efe-a6ce-4bf6-8d62-0bfc462ef2b3" />
+
+点击完成 保存更改
+
+弹出修改 创建DNNS记录 
+
+选择创建新代理DNS记录
+
+类型为A 名称为你的子域名 ipv4 为192.0.2.1
+
+
+<img width="640" height="459" alt="image" src="https://github.com/user-attachments/assets/f88ad346-30aa-41ef-9f7c-deb2453afbfe" />
+
+
+snippets部署结束
+
+
 ------------------------------------------------------------------------
 
 ### 方法二：通过 GitHub Actions 部署（进阶）
