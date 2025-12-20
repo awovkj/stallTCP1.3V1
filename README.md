@@ -4,14 +4,15 @@
 
 **源代码来自于AK的strllTCP1.3**
 
-它集成了 **自适应订阅生成**、**优选IP自动负载均衡**、**智能黑名单防御**、**Telegram 实时通知** 以及 **可视化的后台管理面板**。
+它集成了 **自适应订阅生成**、**优选IP自动负载均衡**、**智能白名单**、**Telegram 实时通知** 以及 **可视化的后台管理面板**。
 
 > **🌟 核心特性：**
 > *   **无状态部署**：无需服务器，完全依托 Cloudflare 免费生态 (Workers + D1 + Pages)。
 > *   **极致安全**：采用 **会话级强制登录** 机制，杜绝后台“闪屏”泄露；新增 **HTTP 安全响应头** (X-Frame-Options 等)，防止点击劫持攻击。
 > *   **智能防死循环**：内置递归保护机制，防止因配置错误导致 Worker 自我请求炸库。
-> *   **数据持久化**：支持 **D1 数据库 (SQLite)** 或 KV 存储，配置永不丢失。
-> *   **可视化管理**：后台直接管理黑名单 IP、TG 通知配置、Cloudflare 统计配置，无需反复修改代码。
+> *   **可视化管理**：后台直接管理白名单 IP、TG 通知配置、Cloudflare 统计配置，无需反复修改代码。
+> *   **🆕 动态配置热更新**：支持在面板中直接修改并保存 TG Bot Token、Cloudflare API、优选 IP 库等关键配置（写入 D1/KV），无需重新部署代码。
+> *   **🆕 白名单可视化管理**：支持在后台添加/删除允许访问的 IP (IPv4/IPv6)，配置后即时生效，防止未授权访问。
 
 ---
 
@@ -43,7 +44,6 @@
 | `CF_TOKEN` | Cloudflare API Token (用于统计) | `Go...` |
 | `CF_EMAIL` | Cloudflare Email (Global Key 模式) | `user@example.com` |
 | `CF_KEY` | Cloudflare Global API Key | `868...` |
-| `BJ_IP` | **静态黑名单 IP** (永久禁止访问) | `1.1.1.1, 2.2.2.2` |
 | `WL_IP` | **静态白名单 IP** (免检，视为管理员) | `210.61.97.241` |
 
 ### 🌍 节点来源配置
@@ -93,9 +93,9 @@
     *   **防闪屏修复**：后台页面默认隐藏，只有鉴权通过后才显示，杜绝加载瞬间的数据泄露。
     *   **自动退出**：关闭浏览器或标签页即自动退出登录，每次进入后台均需重新验证。
     *   **XSS 防御**：新增 HTTP 响应头 (X-Frame-Options, X-Content-Type-Options) 策略，防止管理面板被恶意嵌入。
-*   **🚫 增强型防刷**：
-    *   基于数据库的洪水攻击检测，单 IP 短时间频繁请求（>5次）自动拉黑。
-    *   **黑名单管理**：后台可实时查看、添加、删除被封禁的 IP，立即生效。
+*   **🛡️ 白名单机制**：
+    *   **自动记录**：登录成功的管理员 IP 会自动加入临时白名单。
+    *   **可视化管理**：后台可手动添加/删除白名单 IP，支持 IPv4/IPv6，确保只有授权设备能访问后台接口。
 *   **🤖 智能通知系统**：
     *   **静默模式**：自动过滤爬虫扫描，只有管理员登录或操作时才发送通知，告别刷屏。
     *   **UA 拦截**：自动拦截 `bot`, `spider`, `python`, `curl` 等常见爬虫 User-Agent。
@@ -103,12 +103,13 @@
 
 ### 核心功能
 *   **🚀 自适应订阅**：自动识别以下客户端并返回对应格式：
-    *   **支持列表**：Clash, Sing-box, Mihomo, Flclash, V2rayNG, Surge, Quantumult X, Shadowrocket, Loon, Hiddify 等。
-*   **🌍 优选 IP 支持**：内置优选库，支持随机打乱负载均衡，支持远程自动更新。
+    *   **支持列表**：Clash, Sing-box, Mihomo, Flclash, V2rayNG, Surge, Quantumult X, Shadowrocket, Loon, Hiddify 全平台主流客户端等。
+*   **🌍 优选 IP 支持**：支持环境变量。支持在线编辑
 *   **📊 可视化后台**：
-    *   直接在后台修改和保存 TG/CF 配置（优先于硬编码）。
+    *   直接在后台修改和保存 TG/CF/优选IP 配置（优先于硬编码，无需重新部署）。
     *   查看 Cloudflare 今日 API 请求量。
     *   查看最近 50 条访问日志（从 D1/KV 读取）。
+    *   集成 ProxyIP 连通性检测。
 
 **界面预览：** worker全新界面/snippets界面
 <img width="100%" alt="image" src="https://github.com/user-attachments/assets/e43db73f-4d8d-41a3-ab43-61555c8c984b" />
@@ -202,11 +203,23 @@
     *   进入刚才创建的数据库，点击 **控制台 (Console)** 标签。
     *   复制以下 SQL 代码粘贴到控制台并点击 **Execute (执行)**：
     ```sql
-    CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT);
-    CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY AUTOINCREMENT, time TEXT, ip TEXT, region TEXT, action TEXT);
-    CREATE TABLE IF NOT EXISTS stats (date TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
-    CREATE TABLE IF NOT EXISTS flood (ip TEXT PRIMARY KEY, count INTEGER DEFAULT 0, updated_at INTEGER);
-    CREATE TABLE IF NOT EXISTS bans (ip TEXT PRIMARY KEY, is_banned INTEGER DEFAULT 0);
+    -- 配置表：存储后台保存的设置 (TG Token, CF Key, 优选IP等)
+CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT);
+
+-- 白名单表：存储允许访问后台的 IP (新增)
+CREATE TABLE IF NOT EXISTS whitelist (ip TEXT PRIMARY KEY, created_at INTEGER);
+
+-- 日志表：存储访问日志
+CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY AUTOINCREMENT, time TEXT, ip TEXT, region TEXT, action TEXT);
+
+-- 统计表：记录每日请求量
+CREATE TABLE IF NOT EXISTS stats (date TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
+
+-- 洪水攻击记录表 (可选，配合防刷功能)
+CREATE TABLE IF NOT EXISTS flood (ip TEXT PRIMARY KEY, count INTEGER DEFAULT 0, updated_at INTEGER);
+
+-- 黑名单表 (可选，配合防刷功能)
+CREATE TABLE IF NOT EXISTS bans (ip TEXT PRIMARY KEY, is_banned INTEGER DEFAULT 0);
     ```
 
 3.  **绑定变量**：
@@ -235,21 +248,20 @@
 
 ## 🖥️ 后台管理使用说明
 
-访问 `https://你的域名/login` 或直接访问域名进入管理后台。
+访问 `https://你的域名/` 自动跳转登录页。
 
 *   **🔒 强制安全登录**：
     *   **会话级验证**：关闭浏览器标签页或刷新页面（视缓存策略而定）会自动退出登录。
     *   **未设置密码保护**：如果未设置 `WEB_PASSWORD`，系统会强制显示登录页且无法进入，防止后台裸奔。
-*   **🚫 黑名单管理**：
-    *   在面板中可以直接输入 IP 添加到黑名单。
-    *   列表实时从 D1/KV 读取，支持一键删除。
-    *   被拉黑的 IP 将无法访问订阅和网页（直接返回 403）。
+*   **🛡️ 白名单管理**：
+    *   **查看**: 点击 "刷新" 按钮查看当前数据库中的白名单 IP。
+    *   **添加**: 输入 IP 地址点击 "添加白名单" 即可，无需重启。
+    *   **删除**: 点击列表右侧的 "删除" 按钮。
+    *   *注：系统内置的白名单 IP (环境变量 `ADMIN_IP` 或 `WL_IP`) 无法在后台删除。*
 *   **⚙️ 动态配置**：
-    *   在后台点击工具栏按钮，可直接配置 Telegram Bot 和 Cloudflare API。
-    *   支持**可用性验证**，配置成功后状态灯变绿，立即生效。
-*   **快捷操作**：
-    *   支持一键复制订阅链接、Clash/Sing-box 快速导入。
-    *   集成 ProxyIP 连通性检测工具。
+    *   **保存配置**: 在 "🛠️ 优选 IP 与 远程配置" 或 Telegram/CF 弹窗中修改内容后，点击保存。
+    *   数据将写入 D1/KV，优先级高于代码中的默认值。
+    *   **检测**: 支持检测 ProxyIP 可用性，支持测试订阅链接连通性。
 
 ---
 
