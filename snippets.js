@@ -125,7 +125,8 @@ async function cS5(t,a,p,c){
 }
 async function cH(t,a,p,c){
   const{username:u,password:pw,hostname:h,port:pt}=c,s=connect({hostname:h,port:pt}),w=s.writable.getWriter();
-  const q=`CONNECT ${a}:${p} HTTP/1.1\r\nHost: ${a}:${p}\r\n`+(u&&pw?`Proxy-Authorization: Basic ${btoa(`${u}:${pw}`)}\r\n`:'')+"User-Agent: Mozilla/5.0\r\nConnection: keep-alive\r\n\r\n";
+  // 恢复了完整的 User-Agent
+  const q=`CONNECT ${a}:${p} HTTP/1.1\r\nHost: ${a}:${p}\r\n`+(u&&pw?`Proxy-Authorization: Basic ${btoa(`${u}:${pw}`)}\r\n`:'')+"User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36\r\nConnection: keep-alive\r\n\r\n";
   await w.write(new TextEncoder().encode(q));w.releaseLock();
   const r=s.readable.getReader();let b=new Uint8Array(0);
   while(true){const{value:v,done:d}=await r.read();if(d)throw new Error("Cls");const n=new Uint8Array(b.length+v.length);n.set(b);n.set(v,b.length);b=n;const txt=new TextDecoder().decode(b);if(txt.includes("\r\n\r\n")){if(/^HTTP\/1\.[01] 2/i.test(txt)){r.releaseLock();return s;}throw new Error("Refused");}}
